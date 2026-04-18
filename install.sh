@@ -93,8 +93,22 @@ section "3. Устанавливаю зависимости..."
 bun install --silent
 info "Зависимости установлены"
 
-# ─── 4. Создать директорию home ─────────────
-mkdir -p "$INSTALL_DIR/home"
+# ─── 4. Создать директорию home и credentials ───
+mkdir -p "$INSTALL_DIR/home/.claude"
+
+# Symlink credentials — без него Claude не авторизован
+CREDS_SRC="$HOME/.claude/.credentials.json"
+CREDS_LINK="$INSTALL_DIR/home/.claude/.credentials.json"
+if [ -f "$CREDS_SRC" ]; then
+  ln -sf "$CREDS_SRC" "$CREDS_LINK"
+  info "Credentials подключены (симлинк)"
+elif [ -L "$CREDS_LINK" ] || [ -f "$CREDS_LINK" ]; then
+  info "Credentials уже настроены"
+else
+  warn "~/.claude/.credentials.json не найден. Авторизуйся в Claude сначала: claude"
+  warn "После авторизации запусти: ln -sf $CREDS_SRC $CREDS_LINK"
+fi
+
 info "Директория home/ создана"
 
 # ─── 5. Настройка Telegram ──────────────────
@@ -189,7 +203,15 @@ ENV
   info ".env создан (заполни токены)"
 fi
 
-# ─── 7. Создать скрипт запуска ─────────��────
+# ─── 7. Сбросить сессию для первого запуска ─
+# Удаляем старую сессию чтобы гарантированно запустился bootstrap
+SESSION_FILE="$INSTALL_DIR/.claude/claudeclaw/session.json"
+if [ -f "$SESSION_FILE" ]; then
+  rm -f "$SESSION_FILE"
+  info "Сессия сброшена (запустится знакомство)"
+fi
+
+# ─── 8. Создать скрипт запуска ──────────────
 cat > "$INSTALL_DIR/start.sh" << STARTSCRIPT
 #!/usr/bin/env bash
 # EVA — запуск
