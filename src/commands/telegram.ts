@@ -11,6 +11,33 @@ import { extname, join } from "node:path";
 
 // --- Markdown → Telegram HTML conversion (ported from nanobot) ---
 
+
+function formatRateLimitReset(stdout: string): string {
+  const match = stdout.match(/resets?\s+(\d+)(?::(\d+))?(am|pm)?\s*\(?utc([+-]\d+(?:\.\d+)?)?\)?/i);
+  if (!match) return " Попробуй позже.";
+
+  let hours = parseInt(match[1]);
+  const minutes = parseInt(match[2] || "0");
+  const ampm = (match[3] || "").toLowerCase();
+  const utcOffset = match[4] ? parseFloat(match[4]) : 0;
+
+  if (ampm === "pm" && hours !== 12) hours += 12;
+  if (ampm === "am" && hours === 12) hours = 0;
+
+  // Convert to minutes from midnight UTC
+  const utcMinutes = (hours * 60 + minutes) - (utcOffset * 60);
+
+  // Apply user timezone offset from settings
+  const settings = getSettings();
+  const tzMatch = (settings.timezone || "UTC+0").match(/UTC([+-]\d+(?:\.\d+)?)/i);
+  const userOffset = tzMatch ? parseFloat(tzMatch[1]) : 0;
+  const localMinutes = ((utcMinutes + userOffset * 60) % (24 * 60) + 24 * 60) % (24 * 60);
+
+  const localH = Math.floor(localMinutes / 60);
+  const localM = localMinutes % 60;
+  return ` Обновится в ${String(localH).padStart(2, "0")}:${String(localM).padStart(2, "0")}.`;
+}
+
 function markdownToTelegramHtml(text: string): string {
   if (!text) return "";
 
@@ -648,9 +675,8 @@ async function flushBatch(key: string): Promise<void> {
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
-      const rateLimitMatch = (result.stdout || "").match(/resets? (\d+(?::\d+)?(?:am|pm)?\s*(?:utc[+-]?\d*)?)/i);
       if (result.stdout && /you.ve hit your limit|out of extra usage/i.test(result.stdout)) {
-        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}.` : " Попробуй позже.";
+        const resetTime = formatRateLimitReset(result.stdout);
         await sendMessage(config.token, chatId, `⏳ Достигнут лимит запросов Claude.${resetTime}`, threadId);
       } else {
         await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
@@ -952,9 +978,8 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
-      const rateLimitMatch = (result.stdout || "").match(/resets? (\d+(?::\d+)?(?:am|pm)?\s*(?:utc[+-]?\d*)?)/i);
       if (result.stdout && /you.ve hit your limit|out of extra usage/i.test(result.stdout)) {
-        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}.` : " Попробуй позже.";
+        const resetTime = formatRateLimitReset(result.stdout);
         await sendMessage(config.token, chatId, `⏳ Достигнут лимит запросов Claude.${resetTime}`, threadId);
       } else {
         await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
