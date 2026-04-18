@@ -954,7 +954,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     if (result.exitCode !== 0) {
       const rateLimitMatch = (result.stdout || "").match(/resets? (\d+(?::\d+)?(?:am|pm)?\s*(?:utc[+-]?\d*)?)/i);
       if (result.stdout && /you.ve hit your limit|out of extra usage/i.test(result.stdout)) {
-        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}." : " Попробуй позже.";
+        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}.` : " Попробуй позже.";
         await sendMessage(config.token, chatId, `⏳ Достигнут лимит запросов Claude.${resetTime}`, threadId);
       } else {
         await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
