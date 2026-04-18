@@ -648,7 +648,13 @@ async function flushBatch(key: string): Promise<void> {
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
-      await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
+      const rateLimitMatch = (result.stdout || "").match(/resets? (\d+(?::\d+)?(?:am|pm)?\s*(?:utc[+-]?\d*)?)/i);
+      if (result.stdout && /you.ve hit your limit|out of extra usage/i.test(result.stdout)) {
+        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}.` : " Попробуй позже.";
+        await sendMessage(config.token, chatId, `⏳ Достигнут лимит запросов Claude.${resetTime}`, threadId);
+      } else {
+        await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
+      }
     } else {
       const { cleanedText: afterReact, reactionEmoji } = extractReactionDirective(result.stdout || "");
       const { cleanedText, filePaths } = extractSendFileDirectives(afterReact);
@@ -946,7 +952,13 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
-      await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
+      const rateLimitMatch = (result.stdout || "").match(/resets? (\d+(?::\d+)?(?:am|pm)?\s*(?:utc[+-]?\d*)?)/i);
+      if (result.stdout && /you.ve hit your limit|out of extra usage/i.test(result.stdout)) {
+        const resetTime = rateLimitMatch ? ` Обновится в ${rateLimitMatch[1].toUpperCase()}." : " Попробуй позже.";
+        await sendMessage(config.token, chatId, `⏳ Достигнут лимит запросов Claude.${resetTime}`, threadId);
+      } else {
+        await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
+      }
     } else {
       const { cleanedText: afterReact, reactionEmoji } = extractReactionDirective(result.stdout || "");
       const { cleanedText, filePaths } = extractSendFileDirectives(afterReact);
