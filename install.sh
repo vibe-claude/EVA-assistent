@@ -24,6 +24,14 @@ echo ""
 
 INSTALL_DIR="${1:-$HOME/eva}"
 
+# При запуске через curl | bash stdin занят pipe-ом — читаем с терминала напрямую
+INTERACTIVE_IN="/dev/tty"
+ask() {
+  local prompt="$1" varname="$2"
+  printf "  %s" "$prompt" > /dev/tty
+  read -r "$varname" < "$INTERACTIVE_IN"
+}
+
 # ─── 1. Проверить bun ───────────────────────
 section "1. Проверяю окружение..."
 
@@ -52,7 +60,7 @@ if ! command -v claude &>/dev/null; then
   echo "  Установи: npm install -g @anthropic-ai/claude-code"
   echo "  Или скачай с: https://claude.ai/code"
   echo ""
-  read -p "  Продолжить без Claude CLI? (y/N): " CONTINUE_WITHOUT
+  ask "Продолжить без Claude CLI? (y/N): " CONTINUE_WITHOUT
   if [[ "$CONTINUE_WITHOUT" != "y" && "$CONTINUE_WITHOUT" != "Y" ]]; then
     echo "  Установи Claude CLI и запусти install.sh снова."
     exit 0
@@ -66,7 +74,7 @@ section "2. Устанавливаю EVA в $INSTALL_DIR..."
 
 if [ -d "$INSTALL_DIR" ] && [ "$(ls -A $INSTALL_DIR)" ]; then
   warn "Директория $INSTALL_DIR уже существует."
-  read -p "  Обновить? (y/N): " UPDATE
+  ask "Обновить? (y/N): " UPDATE
   if [[ "$UPDATE" == "y" || "$UPDATE" == "Y" ]]; then
     cd "$INSTALL_DIR"
     git pull origin main 2>/dev/null || git pull 2>/dev/null || warn "Не удалось обновить — продолжаю с текущей версией"
@@ -100,7 +108,7 @@ echo "  3. Выбери имя и username"
 echo "  4. Скопируй то��ен (формат: 1234567890:AAA...)"
 echo ""
 
-read -p "  Telegram Bot Token: " TG_TOKEN
+ask "Telegram Bot Token: " TG_TOKEN
 
 if [ -z "$TG_TOKEN" ]; then
   warn "Токен не указан. Можно добавить позже в .claude/claudeclaw/settings.json"
@@ -120,7 +128,7 @@ echo ""
 echo "  Твой Telegram User ID (для безопасности — только ты сможешь писать EVA)."
 echo "  Узнать ID: напиши @userinfobot в Telegram."
 echo ""
-read -p "  Твой Telegram User ID: " TG_USER_ID
+ask "Твой Telegram User ID: " TG_USER_ID
 
 # Записать settings.json
 SETTINGS_DIR="$INSTALL_DIR/.claude/claudeclaw"
