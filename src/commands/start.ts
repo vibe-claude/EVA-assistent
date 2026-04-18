@@ -606,7 +606,9 @@ export async function start(args: string[] = []) {
   }
 
   // Install plugins without blocking daemon startup.
-  startPreflightInBackground(process.cwd());
+  if (!process.env.CLAUDECLAW_SKIP_PREFLIGHT) {
+    startPreflightInBackground(process.cwd());
+  }
 
   if (currentSettings.heartbeat.enabled) scheduleHeartbeat();
 
