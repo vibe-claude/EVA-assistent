@@ -1,6 +1,6 @@
 # Работа с документами (файлы из Telegram)
 
-Когда пользователь присылает любой файл или изображение — EVA:
+Когда Александр присылает любой файл или изображение — EVA:
 
 **ПРАВИЛО:** Любой файл (фото, PDF, скан, изображение) → всегда через subprocess. Никогда не читать напрямую в основной сессии.
 
@@ -11,8 +11,8 @@
 
 ```bash
 FILE_PATH="<путь к входящему файлу>"
-CONTENT=$(claude -p \
-  "Прочитай файл $FILE_PATH. Верни JSON: {\"type\":\"тип документа\",\"date\":\"YYYY-MM-DD — дата выдачи/подписания документа (не сегодня!)\",\"parties\":\"стороны\",\"number\":\"номер\",\"summary\":\"суть в 2-3 предложениях\",\"action\":\"нужное действие или null\",\"deadline\":\"YYYY-MM-DD или null\"}" \
+CONTENT=$(HOME=/home/claudeagent/eva-home claude -p \
+  "Прочитай файл $FILE_PATH. Верни JSON: {\"doc_type\":\"тип из списка: заявка-ту | акт | разрешение | договор | письмо | счёт | справка | анализы | запись\",\"status\":\"статус из списка: в работе | получено | выполнено | истекает | отказано\",\"date\":\"YYYY-MM-DD — дата выдачи/подписания документа (не сегодня!)\",\"expires\":\"YYYY-MM-DD — дата истечения срока действия или null\",\"object\":\"название объекта строительства или null\",\"party\":\"организация или человек (если нет объекта) или null\",\"parties\":\"стороны\",\"number\":\"номер\",\"summary\":\"суть в 2-3 предложениях\",\"action\":\"нужное действие или null\",\"deadline\":\"YYYY-MM-DD или null\"}" \
   --dangerously-skip-permissions \
   --no-session-persistence \
   --output-format json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('result',''))" 2>/dev/null)
@@ -37,11 +37,11 @@ echo "$CONTENT"
 1. **НЕ сохранять файл** в raw/ — картинку архивировать не нужно
 2. Извлечь: дата, время, место, услуга, мастер
 3. Создать задачу в Notion (шаблон ниже)
-4. Подтвердить пользователю: дата/время + напомню за 2 часа
+4. Подтвердить Александру: дата/время + напомню за 2 часа
 
 **Создать задачу в Notion:**
 ```bash
-source .env
+source /home/claudeagent/eva/.env
 REMIND_TIME="<время записи минус 2 часа, формат HH:MM>"
 APPT_DATE="<YYYY-MM-DD>"
 curl -s -X POST "https://api.notion.com/v1/pages" \
@@ -85,7 +85,7 @@ curl -s -X POST "https://api.notion.com/v1/pages" \
   ```bash
   NAME="<краткое-название-латиницей>"
   EXT="${FILE_PATH##*.}"
-  cp "$FILE_PATH" "raw/${EFFECTIVE_DATE}_${NAME}.${EXT}"
+  cp "$FILE_PATH" "/home/claudeagent/eva/raw/${EFFECTIVE_DATE}_${NAME}.${EXT}"
   ```
   Подтвердить: "Сохранено в raw/ 👍"
 
@@ -99,16 +99,40 @@ curl -s -X POST "https://api.notion.com/v1/pages" \
 ```bash
 # Ищем по объекту (например, "портофино", "пик отель", "кислород")
 OBJECT_SLUG="<slug объекта>"
-ls wiki/ | grep "$OBJECT_SLUG"
-grep -rl "$OBJECT_SLUG" wiki/ --include="*.md" | head -5
+ls /home/claudeagent/eva/wiki/ | grep "$OBJECT_SLUG"
+grep -rl "$OBJECT_SLUG" /home/claudeagent/eva/wiki/ --include="*.md" | head -5
 ```
+
+### АВТОЗАКРЫТИЕ заявок (выполнять до создания/обновления страницы)
+
+Если новый документ — это **результат** ранее поданной заявки (например, пришли ТУ по объекту где была заявка-ту), то:
+
+```bash
+# Найти открытые заявки по тому же объекту
+OBJECT_SLUG="<slug объекта>"
+DOC_TYPE="<doc_type из $CONTENT>"
+
+# Маппинг: если пришло ТУ/разрешение/договор — закрыть соответствующую заявку
+# ТУ получено → закрыть заявка-ту | акт подписан → закрыть письмо/запрос | разрешение → закрыть заявку
+grep -rl "$OBJECT_SLUG" /home/claudeagent/eva/wiki/ --include="*.md" | xargs grep -l "status: в работе" | while read f; do
+  FILE_TYPE=$(grep "^type:" "$f" | head -1 | awk '{print $2}')
+  # Если новый тип = результат типа в файле → обновить статус
+  sed -i "s/^status: в работе$/status: выполнено/" "$f"
+  echo "Закрыта заявка: $f"
+done
+```
+
+Применять только когда логика очевидна:
+- Пришли ТУ (doc_type=разрешение или ту) → закрыть `заявка-ту` по тому же объекту
+- Подписан акт → закрыть связанный запрос/письмо
+- Подписан договор → закрыть заявку на договор
 
 ### Если страница СУЩЕСТВУЕТ → дописать событие в историю
 
 Найди раздел `## История` (или `## События`) на странице и добавь новую запись:
 
 ```markdown
-- **YYYY-MM-DD** — <суть события в 1-2 предложениях>. Файл: raw/имя_файла.pdf
+- **YYYY-MM-DD** — <суть события в 1-2 предложениях>. Файл: /home/claudeagent/eva/raw/имя_файла.pdf
 ```
 
 Если раздела истории нет — добавь его перед разделом `## Связанные документы` или в конец файла:
@@ -117,7 +141,7 @@ grep -rl "$OBJECT_SLUG" wiki/ --include="*.md" | head -5
 ## История
 
 - **YYYY-MM-DD** — <первое событие>
-- **YYYY-MM-DD** — <новое событие>. Файл: raw/имя_файла.pdf
+- **YYYY-MM-DD** — <новое событие>. Файл: /home/claudeagent/eva/raw/имя_файла.pdf
 ```
 
 ### Если страница НЕ существует → создать новую
@@ -126,9 +150,13 @@ grep -rl "$OBJECT_SLUG" wiki/ --include="*.md" | head -5
 ---
 date: YYYY-MM-DD
 source: telegram
+type: <тип: заявка-ту | акт | разрешение | договор | письмо | счёт | справка | анализы | запись>
+status: <статус: в работе | получено | выполнено | истекает | отказано>
+expires: <YYYY-MM-DD или null>
+object: <название объекта или null>
+party: <организация/человек если нет объекта, иначе null>
 tags: [тег1, тег2]
-file: raw/имя_файла.pdf
-object: <название объекта>
+file: /home/claudeagent/eva/raw/имя_файла.pdf
 ---
 
 <содержание из $CONTENT>
@@ -138,6 +166,41 @@ object: <название объекта>
 - **YYYY-MM-DD** — Первый документ по процессу. <суть>
 ```
 
+### Автосвязка после создания/обновления страницы
+
+После записи в wiki — найти все связанные файлы и добавить двусторонние ссылки:
+
+```bash
+CURRENT_FILE="<путь к текущему файлу>"
+CURRENT_SLUG="<имя файла без .md>"
+OBJECT="<object из frontmatter или пустая строка>"
+PARTY="<party из frontmatter или пустая строка>"
+
+# Найти родственные файлы
+if [ -n "$OBJECT" ]; then
+  RELATED=$(grep -rl "object: $OBJECT" /home/claudeagent/eva/wiki/ --include="*.md" | grep -v "$CURRENT_FILE")
+elif [ -n "$PARTY" ]; then
+  RELATED=$(grep -rl "party: $PARTY" /home/claudeagent/eva/wiki/ --include="*.md" | grep -v "$CURRENT_FILE")
+fi
+
+# Добавить ссылки в текущий файл (раздел Связанные документы)
+for f in $RELATED; do
+  SLUG=$(basename "$f" .md)
+  # Добавить [[SLUG]] в раздел Связанные документы текущего файла если ещё нет
+  grep -q "\[\[$SLUG\]\]" "$CURRENT_FILE" || \
+    echo "- [[$SLUG]]" >> "$CURRENT_FILE"
+  # Добавить ссылку на текущий файл в родственный файл
+  grep -q "\[\[$CURRENT_SLUG\]\]" "$f" || \
+    echo "- [[$CURRENT_SLUG]]" >> "$f"
+done
+```
+
+Если раздела "Связанные документы" ещё нет — добавить перед вставкой ссылок:
+```bash
+grep -q "## Связанные документы" "$CURRENT_FILE" || \
+  echo -e "\n## Связанные документы" >> "$CURRENT_FILE"
+```
+
 ### Примеры объектов и slug-ов
 - "Портофино" → `portofino`
 - "Пик Отель" → `pik-otel`
@@ -145,21 +208,36 @@ object: <название объекта>
 - "Водоканал" → `vodokana`
 - "БизнесПроект" → `biznesproekt`
 
-## Шаг 5 — Обновить log.md
+## Шаг 4.5 — Индексировать документ в RAG
+
+После записи/обновления wiki-файла — обновить поисковый индекс:
+```bash
+python3 /home/claudeagent/eva/scripts/wiki-rag.py index "<путь к файлу>" 2>/dev/null
+```
+
+## Шаг 5 — Обновить index.md
+
+После записи в wiki — добавить строку в таблицу index.md:
+```
+| [[имя-файла]] | тип | статус | YYYY-MM-DD | Объект | Суть в одном предложении |
+```
+
+## Шаг 6 — Обновить log.md
 
 Используй `$EFFECTIVE_DATE` (дата документа) — не дату загрузки:
 ```bash
-echo "## [$EFFECTIVE_DATE] ingest | <название> — <суть в 1 предложении>" >> wiki/log.md
+echo "## [$EFFECTIVE_DATE] ingest | <название> — <суть в 1 предложении>" >> /home/claudeagent/eva/wiki/log.md
 ```
 
 Если точная дата неизвестна (документ без даты) — используй `$UPLOAD_DATE` и добавь пометку `(загружен UPLOAD_DATE)`.
 
-## Шаг 6 — Подтвердить пользователю
+## Шаг 7 — Подтвердить Александру
 ```
 📄 Документ сохранён: <название>
-📁 Файл: raw/<имя>
+📁 Файл: /home/claudeagent/eva/raw/<имя>
 🏷 Теги: <теги>
 ✅ Задача создана: <если создана>
+🔗 Связан с: <список связанных файлов если есть>
 ```
 
 ## Примеры тегов
@@ -170,8 +248,8 @@ echo "## [$EFFECTIVE_DATE] ingest | <название> — <суть в 1 пре
 ## База знаний
 
 ```
-raw/   — оригиналы (EVA не изменяет)
-wiki/  — база знаний (EVA пишет)
+/home/claudeagent/eva/raw/   — оригиналы (EVA не изменяет)
+/home/claudeagent/eva/wiki/  — база знаний (EVA пишет)
   index.md  — каталог страниц (обновлять при каждом новом документе)
   log.md    — append-only лог
 ```
@@ -180,6 +258,15 @@ wiki/  — база знаний (EVA пишет)
 Триггеры: "найди документ", "что есть по <теме>", "покажи всё по <объекту>"
 
 ```bash
-grep -r "тег" wiki/ -l
-grep -r "водоканал" wiki/ raw/
+# По типу документа
+grep -rl "type: заявка-ту" /home/claudeagent/eva/wiki/ --include="*.md"
+
+# По статусу
+grep -rl "status: в работе" /home/claudeagent/eva/wiki/ --include="*.md"
+
+# По объекту
+grep -rl "object: Портофино" /home/claudeagent/eva/wiki/ --include="*.md"
+
+# По типу + статус (например все открытые заявки на ТУ)
+grep -rl "type: заявка-ту" /home/claudeagent/eva/wiki/ --include="*.md" | xargs grep -l "status: в работе"
 ```

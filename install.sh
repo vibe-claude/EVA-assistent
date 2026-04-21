@@ -91,7 +91,18 @@ cd "$INSTALL_DIR"
 # ─── 3. Установить зависимости ───────────���──
 section "3. Устанавливаю зависимости..."
 bun install --silent
-info "Зависимости установлены"
+info "Node/Bun зависимости установлены"
+
+# Python-зависимости для wiki-rag (семантический поиск)
+if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+  PIP=$(command -v pip3 || command -v pip)
+  info "Устанавливаю sentence-transformers (семантический поиск wiki)..."
+  $PIP install -q sentence-transformers 2>/dev/null && \
+    info "sentence-transformers установлен" || \
+    warn "Не удалось установить sentence-transformers — поиск wiki будет ограничен"
+else
+  warn "pip не найден — пропускаю установку sentence-transformers"
+fi
 
 # ─── 4. Создать директорию home и credentials ───
 mkdir -p "$INSTALL_DIR/home/.claude"
@@ -203,7 +214,31 @@ ENV
   info ".env создан (заполни токены)"
 fi
 
-# ─── 7. Сбросить сессию для первого запуска ─
+# ─── 7. Создать настройки разрешений Claude Code ─
+CLAUDE_SETTINGS="$INSTALL_DIR/home/.claude/settings.json"
+mkdir -p "$INSTALL_DIR/home/.claude"
+if [ ! -f "$CLAUDE_SETTINGS" ]; then
+  cat > "$CLAUDE_SETTINGS" << 'CCSETTINGS'
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ],
+    "deny": []
+  },
+  "skipDangerousModePermissionPrompt": true
+}
+CCSETTINGS
+  info "Разрешения Claude Code настроены"
+fi
+
+# ─── 8. Сбросить сессию для первого запуска ─
 # Удаляем старую сессию чтобы гарантированно запустился bootstrap
 SESSION_FILE="$INSTALL_DIR/.claude/claudeclaw/session.json"
 if [ -f "$SESSION_FILE" ]; then
@@ -211,7 +246,7 @@ if [ -f "$SESSION_FILE" ]; then
   info "Сессия сброшена (запустится знакомство)"
 fi
 
-# ─── 8. Создать скрипт запуска ──────────────
+# ─── 9. Создать скрипт запуска ──────────────
 cat > "$INSTALL_DIR/start.sh" << STARTSCRIPT
 #!/usr/bin/env bash
 # EVA — запуск
