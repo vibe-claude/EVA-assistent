@@ -201,6 +201,10 @@ fi
 
 info "settings.json настроен"
 
+# Защита токенов: только владелец может читать
+chmod 600 "$SETTINGS_DIR/settings.json" 2>/dev/null || true
+info "Права доступа к settings.json: 600 (только владелец)"
+
 # ─── 6. Создать .env ────────────────────────
 if [ ! -f "$INSTALL_DIR/.env" ]; then
   cat > "$INSTALL_DIR/.env" << 'ENV'
@@ -211,7 +215,10 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
 NOTION_TOKEN=
 NOTION_TASKS_DB=
 ENV
+  chmod 600 "$INSTALL_DIR/.env"
   info ".env создан (заполни токены)"
+else
+  chmod 600 "$INSTALL_DIR/.env"
 fi
 
 # ─── 7. Создать настройки разрешений Claude Code ─
@@ -259,6 +266,18 @@ echo "Логи: $INSTALL_DIR/daemon.log"
 STARTSCRIPT
 chmod +x "$INSTALL_DIR/start.sh"
 info "start.sh создан"
+
+# ─── Приватность ────────────────────────────
+echo ""
+echo "  ⚠️  Важно о приватности:"
+echo ""
+echo "  EVA использует Claude AI (Anthropic, США) для обработки"
+echo "  сообщений и документов. Данные передаются на серверы"
+echo "  Anthropic при каждом запросе."
+echo ""
+echo "  Не передавай через EVA конфиденциальные медицинские,"
+echo "  финансовые данные или документы под NDA."
+echo ""
 
 # ─── Итог ───────────────────────────────────
 echo ""
